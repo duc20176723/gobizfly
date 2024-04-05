@@ -24,10 +24,11 @@ type TokenService interface {
 type TokenCreateRequest struct {
 	AuthMethod    string `json:"auth_method"`
 	Username      string `json:"username,omitempty"`
-	Password  string `json:"password,omitempty"`
-	ProjectID string `json:"project_id,omitempty"`
-	AppCredID string `json:"credential_id,omitempty"`
+	Password      string `json:"password,omitempty"`
+	ProjectID     string `json:"project_id,omitempty"`
+	AppCredID     string `json:"credential_id,omitempty"`
 	AppCredSecret string `json:"credential_secret,omitempty"`
+	AuthType      string `json:"auth_type,omitempty"`
 }
 
 // Token contains token information.
@@ -61,21 +62,23 @@ func (t *token) Refresh(ctx context.Context) (*Token, error) {
 }
 
 func (t *token) create(ctx context.Context, tcr *TokenCreateRequest) (*Token, error) {
+	var tok Token
+	if tcr.AuthType != AppCredentialAuthType {
+		req, err := t.client.NewRequest(ctx, http.MethodPost, authServiceName, tokenPath, tcr)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := t.client.Do(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
 
-	req, err := t.client.NewRequest(ctx, http.MethodPost, authServiceName, tokenPath, tcr)
-	if err != nil {
-		return nil, err
+		if err := json.NewDecoder(resp.Body).Decode(&tok); err != nil {
+			return nil, err
+		}
 	}
-	resp, err := t.client.Do(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
 
-	tok := &Token{}
-	if err := json.NewDecoder(resp.Body).Decode(tok); err != nil {
-		return nil, err
-	}
 	// Get new services catalog after create token
 	services, err := t.client.Service.List(ctx)
 	if err != nil {
@@ -88,7 +91,8 @@ func (t *token) create(ctx context.Context, tcr *TokenCreateRequest) (*Token, er
 	t.client.projectID = tcr.ProjectID
 	t.client.appCredID = tcr.AppCredID
 	t.client.appCredSecret = tcr.AppCredSecret
+	t.client.authType = tcr.AuthType
 	t.client.services = services
 
-	return tok, nil
+	return &tok, nil
 }
